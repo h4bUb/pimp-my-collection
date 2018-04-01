@@ -6,29 +6,38 @@ import shutil
 import re
 import selenium.webdriver.support.ui as ui
 from time import sleep
+from datetime import datetime
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.common.exceptions import NoSuchElementException
+#from selenium.webdriver.common.keys import Keys
+#from browsermobproxy import Server
 
 
+#debug = True
 debug = False
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 Обязательные параметры:
 	src - папка с картинками, которые нужно отсортировать
 Необязательные параметры:
-	dest - папка, в которую уидать отсортированные
+	dest - папка, в которую кидать отсортированные
+	unknown - неопознанные
 	chromedriver_location - путь к папке с chromedriver.exe,
 		так же должен быть в переменной PATH
 	proxy_server - адрес прокси-сервера в формате x.x.x.x:x
 	fast_proxy - если прокси быстрое, то стоит поставить True
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 class Pimper:
-	def __init__(self, src, dest=None, chromedriver_location=None, proxy_server=None, fast_proxy=False):
+	def __init__(self, src, dest=None, unknown=None, chromedriver_location=None, proxy_server=None, fast_proxy=False):
 
 		if debug:
 			print ("src:", src)
 			print ("dest:", dest)
+
+		self.f = open(r'C:\Python34\Projects\pimp-my-collection\text.txt', 'a')
+		self.f.write('\n' + str(datetime.today()) + '\n')
+		self.titles = []
 
 		#Куда кидать отсортированные
 		if dest is None:
@@ -52,15 +61,27 @@ class Pimper:
 				exit(1)
 
 		#Папка для картинок без сурса
-		try:
-			os.mkdir("unknown")
-		except OSError:
-			if debug:
-				print ("unkn folder already exists")
-			pass
+		if unknown is None:
+			try:
+				os.mkdir("unknown")
+			except OSError:
+				if debug:
+					print ("unkn folder already exists")
+				pass
+			finally:
+				self.unknown = self.dest + r"\unknown"
+		else:
+			self.unknown = unknown
+			try:
+				os.mkdir(self.unknown)
+			except OSError:
+				if debug:
+					print ("unknown folder already exists")
+				pass
 
 		if debug:
 			print ("dest:", self.dest)
+			print ("unknown:", self.unknown)
 
 		#Откуда берем картинки
 		self.folder = src
@@ -82,30 +103,52 @@ class Pimper:
 		self.proxy_sleep_time = 3
 		self.waiting_time = 15
 		self.fast_proxy = fast_proxy
-		options = webdriver.ChromeOptions()
+		#options = webdriver.ChromeOptions()
+		#Новая версия - новая прокси
+		from selenium.webdriver import Proxy
 		if proxy_server is None:
-			self.proxy_server = '--proxy-server=176.221.42.213:3130' #https://hidemy.name/en/proxy-list/
+			proxy_server = "163.172.175.210:3128" #https://free-proxy-list.net/
+			#self.proxy_server = '--proxy-server=176.221.42.213:3130' #https://hidemy.name/en/proxy-list/
+			settings = {
+			        "httpProxy": proxy_server,
+        			"sslProxy": proxy_server
+			    }
+			self.proxy_server = Proxy(settings)
 		else:
-			self.proxy_server = '--proxy-server=' + proxy_server
+			#self.proxy_server = '--proxy-server=' + proxy_server
+			settings = {
+			        "httpProxy": proxy_server,
+        			"sslProxy": proxy_server
+			    }
+			self.proxy_server = Proxy(settings)
 
-		if debug:
-			print ("proxy:", self.proxy_server)
-		options.add_argument(self.proxy_server)
+		#if debug:
+			#print ("proxy:", proxy_server)
+		#options.add_argument(self.proxy_server)
 
 		if chromedriver_location is None:
 			self.chromedriver_location = self.dest + "\chromedriver_win32\chromedriver.exe"
 		else:
 			self.chromedriver_location = chromedriver_location
 
+		from selenium.webdriver.chrome.webdriver import WebDriver as ChromeDriver
+		from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+		cap = DesiredCapabilities.CHROME.copy()
+		cap['platform'] = "WINDOWS"
+		cap['version'] = "10"
 		#Без прокси
-		self.driver = webdriver.Chrome(executable_path="C:\Python34\Projects\search_images\chromedriver_win32\chromedriver.exe")
+		self.driver = ChromeDriver(desired_capabilities=cap, executable_path='C:\Python34\Projects\search_images\chromedriver_win32\chromedriver.exe')
 
 		#С прокси
-		self.driver2 = webdriver.Chrome(executable_path="C:\Python34\Projects\search_images\chromedriver_win32\chromedriver.exe", chrome_options=options)
+		#self.driver2 = webdriver.Chrome(executable_path="C:\Python34\Projects\search_images\chromedriver_win32\chromedriver.exe", chrome_options=options)
+		#Новая версия - новая прокси
+		self.proxy_server.add_to_capabilities(cap)
+		self.driver2 = ChromeDriver(desired_capabilities=cap, executable_path='C:\Python34\Projects\search_images\chromedriver_win32\chromedriver.exe')
 
 	def find_on_yandere(self):
 		try:
-			source = self.driver.find_element_by_xpath('//li[@data-type="copyright"]')
+			#source = self.driver.find_element_by_xpath('//li[@data-type="copyright"]')
+			source = self.driver.find_element_by_class_name('tag-type-copyright')
 		except NoSuchElementException:
 			if debug:
 				print ("no source")
@@ -132,24 +175,30 @@ class Pimper:
 			source = self.driver2.find_element_by_class_name('tag-type-copyright')
 			if not self.fast_proxy:
 				sleep(self.proxy_sleep_time)
+			#sleep(10)
 		except TimeoutException:
 			if debug:
 				print ("time out")
 			self.driver2.get(addr)
 			sleep(self.proxy_sleep_time)
+			#sleep(10)
 			source = self.driver2.find_element_by_class_name('tag-type-copyright')
 			if not self.fast_proxy:
 				sleep(self.proxy_sleep_time)
+			#sleep(10)
 		except NoSuchElementException:
 			if not self.fast_proxy:
 				if debug:
 					print ("no element")
+				#return None
 				self.driver2.get(addr)
 				sleep(self.proxy_sleep_time)
+				#sleep(10)
 
 				try:
 					source = self.driver2.find_element_by_class_name('tag-type-copyright')
 					sleep(self.proxy_sleep_time)
+					#sleep(10)
 				except NoSuchElementException:
 					if debug:
 						print ("actually no element")
@@ -163,13 +212,17 @@ class Pimper:
 
 		if not self.fast_proxy:
 			sleep(self.proxy_sleep_time)
+		#sleep(10)
 
 		try:
 			source2 = source.find_elements_by_css_selector('a')
 			if not self.fast_proxy:
 				sleep(self.proxy_sleep_time)
+			#sleep(10)
 		except TimeoutException:
 			sleep(self.proxy_sleep_time)
+			#sleep(10)
+		#source2 = ui.WebDriverWait(driver, self.waiting_time).until(lambda driver: source.find_elements_by_css_selector('a'))
 
 		if debug:
 			print (source2)
@@ -206,39 +259,64 @@ class Pimper:
 				return source[1].text[1:len(source[1].text)-1]
 
 		return None
+		"""
+		if got_source:
+			return source[1].text[1:len(source[1].text)-1]
+		else:
+			return None
+		"""
 
 	def find_on_danbooru(self, addr):
 		try:
 			source = self.driver2.find_element_by_class_name('category-3')
 			if not self.fast_proxy:
 				sleep(self.proxy_sleep_time)
+			#sleep(10)
 		except TimeoutException:
 			if debug:
 				print ("time out")
 			self.driver2.get(addr)
 			sleep(self.proxy_sleep_time)
+			#sleep(10)
 			source = self.driver2.find_element_by_class_name('category-3')
 			if not self.fast_proxy:
 				sleep(self.proxy_sleep_time)
+			#sleep(10)
 		except NoSuchElementException:
 			if not self.fast_proxy:
 				if debug:
 					print ("no element")
+				#return None
 				self.driver2.get(addr)
 				sleep(self.proxy_sleep_time)
+				#sleep(10)
 
 				try:
 					source = self.driver2.find_element_by_class_name('category-3')
 					sleep(self.proxy_sleep_time)
+					#sleep(10)
 				except NoSuchElementException:
 					if debug:
 						print ("actually no element")
 					return None
+				"""
+				try:
+					self.driver2.get(addr)
+					sleep(10)
+					source = self.driver.find_element_by_class_name('category-3')
+					sleep(10)
+				except NoSuchElementException:
+					return None
+				"""
 			else:
 				return None
 
 		if debug:
 			print (source)
+			#print (source.text)
+
+		#sleep(self.proxy_sleep_time)
+		#sleep(10)
 
 		try:
 			source2 = source.find_elements_by_css_selector('a')
@@ -248,6 +326,7 @@ class Pimper:
 			if debug:
 				print ("time out source 2")
 			sleep(self.proxy_sleep_time)
+			#sleep(10)
 
 		if debug:
 			print (source2)
@@ -260,41 +339,50 @@ class Pimper:
 		return source2[1].text
 
 	def move_image(self, folder_name):
+		img = (self.img_name[1:len(self.img_name)]).encode('ascii', 'ignore')
 		#Сурс не нашелся
 		if folder_name is None:
-			folder_name = r"\unknown"
+			#folder_name = r"\unknown"
+			dest = (self.unknown).encode('ascii', 'ignore')
 			try:
 				if debug:
 					print ("src:", self.folder + self.img_name)
-					print ("dst:", self.dest + folder_name)
-				shutil.copy(self.folder + self.img_name, self.dest + folder_name)
+					print ("dst:", dest)
+				shutil.copy(self.folder + self.img_name, self.unknown)
 				os.remove(self.folder + self.img_name)
-				print ("image", self.img_name[1:len(self.img_name)], "successfully moved in", self.dest + folder_name)
+				print ("image", img, "successfully moved in", dest)
 			except:
-				print ("Error while moving image", self.img_name[1:len(self.img_name)])
+				print ("Error while moving image", img)
 		#Сурс найден
 		else:
+			dest = (self.dest + r'\n'[:-1] + folder_name).encode('ascii', 'ignore')
 			#Убираем запрещенные символы для имени папки
 			forbidden_symbols = re.findall('[*|\:"<>?/]', folder_name)
 			for symb in forbidden_symbols:
 				if debug:
 					print (symb)
-				folder_name = folder_name.replace(symb, "")
+				folder_name = folder_name.replace(symb, "").lower()
 			if debug:
 				print ("new folder name:", folder_name)
+			print ("writing...")
+			if (folder_name not in self.titles):
+				try:
+					self.f.write(folder_name + '\n')
+					self.titles.append(folder_name)
+				except UnicodeEncodeError:
+					pass
 			try:
 				os.mkdir(folder_name)
 			except OSError:
 				if debug:
 					print ("folder", folder_name, "already exists")
 				pass
-
 			try:
 				shutil.copy(self.folder + self.img_name, folder_name)
 				os.remove(self.folder + self.img_name)
-				print ("image", self.img_name[1:len(self.img_name)], "successfully moved in", self.dest + r'\n'[:-1] + folder_name)
-			except:
-				print ("Error while moving image", self.img_name[1:len(self.img_name)])
+				print ("image", img, "successfully moved in", dest)
+			except OSError:
+				print ("Error while moving image", img)
 			sleep(self.sleep_time)
 
 	#Приоритет сайтов
@@ -320,7 +408,6 @@ class Pimper:
 			pos = 10
 		priority = 5
 		best_addr = pic_addr[0].get_attribute('href')
-
 		if (best_addr.find("danbooru")) != -1:
 			if debug:
 				print ("danbooru[0]")
@@ -329,14 +416,21 @@ class Pimper:
 			if debug:
 				print ("sankaku[0]")
 			priority = 4
+		#some errors with e-shuushuu
+		'''
 		elif (best_addr.find("shuushuu")) != -1:
 			if debug:
 				print ("shuushuu[0]")
 			priority = 2
+		'''
+		#some errors with yandere
+		'''
 		elif (best_addr.find("yande")) != -1:
 			if debug:
 				print ("yandere[0]")
 			priority = 1
+		'''
+		
 
 		if priority > 2:
 			for addr in pic_addr[1:len(pic_addr)]:
@@ -347,6 +441,7 @@ class Pimper:
 				similarity = int(re.search('\d+', variants[pos].text).group())
 				if debug:
 					print ("similarity =", similarity)
+				#if similarity >= 70:
 				if (addr2.find("danbooru")) != -1:
 					if debug:
 						print ("danbooru", priority)
@@ -359,6 +454,8 @@ class Pimper:
 					if priority == 5:
 						best_addr = addr2
 						priority = 4
+				#some errors with e-shuushuu
+				'''
 				elif (addr2.find("shuushuu")) != -1:
 					if debug:
 						print ("shuushuu", priority)
@@ -366,6 +463,9 @@ class Pimper:
 						best_addr = addr2
 						priority = 2
 						break
+				'''
+				#some errors with yandere
+				'''
 				elif (addr2.find("yande")) != -1:
 					if debug:
 						print ("yandere", priority)
@@ -373,6 +473,37 @@ class Pimper:
 						best_addr = addr2
 						priority = 1
 						break
+				'''
+
+				"""
+				if similarity >= 70:
+					if (addr2.find("danbooru")) != -1:
+						if debug:
+							print ("danbooru", priority)
+						if priority == 5:
+							best_addr = addr2
+							priority = 4
+					elif (addr2.find("sankaku")) != -1:
+						if debug:
+							print ("sankaku", priority)
+						if priority > 3:
+							best_addr = addr2
+							priority = 3
+					elif (addr2.find("shuushuu")) != -1:
+						if debug:
+							print ("shuushuu", priority)
+						if priority > 2:
+							best_addr = addr2
+							priority = 2
+							break
+					elif (addr2.find("yande")) != -1:
+						if debug:
+							print ("yandere", priority)
+						if priority > 1:
+							best_addr = addr2
+							priority = 1
+							break
+				"""
 				pos += 4 #Следующее similarity
 
 		if debug:
@@ -380,6 +511,7 @@ class Pimper:
 		return best_addr, priority
 
 	def search_for_source(self, pic_addr):
+		#find_source = True
 		best_addr, priority = self.sort_addresses(pic_addr)
 		folder_name = None
 
@@ -415,6 +547,50 @@ class Pimper:
 				sleep(self.proxy_sleep_time)
 			folder_name = self.find_on_danbooru(best_addr)
 
+		"""
+		for addr in pic_addr:
+			addr2 = addr.get_attribute('href')
+
+			if debug:
+				print ("trying", addr2)
+
+			if (addr2.find("yandere")) != -1:
+				self.driver.get(addr2)
+				folder_name = self.find_on_yandere()
+				break
+			elif (addr2.find("sankaku")) != -1:
+				#driver2 = webdriver.Chrome(executable_path='C:\Python34\Projects\search_images\chromedriver_win32\chromedriver.exe', chrome_options=options)
+				#driver2.set_page_load_timeout(30)
+				#sleep(self.proxy_sleep_time)
+				try:
+					self.driver2.get(addr2)
+					sleep(self.proxy_sleep_time)
+					#ui.WebDriverWait(self.driver2, self.waiting_time).until(lambda driver: self.driver2.get(addr2))
+				except TimeoutException:
+					print ("time out in if")
+					#sleep(self.proxy_sleep_time)
+					sleep(self.proxy_sleep_time)
+				#ui.WebDriverWait(driver, waiting_time).until(lambda driver: driver.get(addr2))
+				folder_name = self.find_on_sankaku(addr2)
+				break
+			elif (addr2.find("shuushuu")) != -1:
+				self.driver.get(addr2)
+				folder_name = self.find_on_eshuushuu()
+				break
+			elif (addr2.find("danbooru")) != -1:
+				#sleep(self.proxy_sleep_time)
+				try:
+					self.driver2.get(addr2)
+					sleep(self.proxy_sleep_time)
+					#ui.WebDriverWait(self.driver2, self.waiting_time).until(lambda driver: self.driver2.get(addr2))
+				except TimeoutException:
+					print ("time out in if")
+					#sleep(self.proxy_sleep_time)
+					sleep(self.proxy_sleep_time)
+				folder_name = self.find_on_danbooru(addr2)
+				break
+		"""
+
 		if folder_name is None:
 			print ("No relevant match for", self.img_name[1:len(self.img_name)])
 		self.move_image(folder_name)
@@ -425,6 +601,7 @@ class Pimper:
 			print ("\nprocessing", self.images.index(image) + 1, "of", len(self.images))
 
 			self.img_name = r'\n'[:-1] + image
+			#img_name = r'\n'[:-1] + "-VZYjgvhFJc.jpg"
 
 			if debug:
 				try:
@@ -440,21 +617,53 @@ class Pimper:
 					image = image.encode('ascii', 'ignore')
 					print (image)
 			else:
+				#find_source = True
+				#driver = webdriver.Chrome("C:\Python34\Projects\search_images\chromedriver_win32\chromedriver.exe", chrome_options=chrome_options)
+				#driver = webdriver.Chrome("C:\Python34\Projects\search_images\chromedriver_win32\chromedriver.exe")
+
+				#chrome_options = webdriver.ChromeOptions()
+				#chrome_options.add_argument("--proxy-server={0}".format(proxy.proxy))
+				#driver = webdriver.Chrome(chrome_options = chrome_options)
+				#driver.set_page_load_timeout(30)
+
+				#driver.get("https://google.com/")
+				#elem = driver.find_element_by_tag_name('body')
+				#elem.send_keys(Keys.CONTROL + 't')
 				self.driver.get("http://iqdb.org/")
 
+				#driver.get("https://2ip.ru/")
+				"""
+				s = driver.current_window_handle
+
+				if debug:
+					print ("main window:", s)
+
+				driver.execute_script("window.open('http://iqdb.org/');")
+
+				if debug:
+					for handle in driver.window_handles:
+					    print ("Handle = ",handle)
+
+				driver.switch_to_window(driver.window_handles[1]);
+				"""
+
 				#Вставляем изображение
+				#element = driver.find_element_by_id("file")
 				element = ui.WebDriverWait(self.driver, self.waiting_time).until(lambda driver: self.driver.find_element_by_id("file"))
 
 				if debug:
 					print (element)
+				#sleep(self.sleep_time)
 
 				element.send_keys(self.folder + self.img_name)
 
 				#Сабмитим
+				#element = driver.find_element_by_xpath("//input[@value='submit']")
 				element  = ui.WebDriverWait(self.driver, self.waiting_time).until(lambda driver: self.driver.find_element_by_xpath("//input[@value='submit']"))
 
 				if debug:
 					print (element)
+				#sleep(self.sleep_time)
 
 				try:
 					element.click()
@@ -465,6 +674,7 @@ class Pimper:
 
 				#Ищем лучшее совпадение
 				try:
+				#pic_addr = driver.find_elements_by_css_selector('.image a')
 					pic_addr = ui.WebDriverWait(self.driver, self.waiting_time).until(lambda driver: self.driver.find_elements_by_css_selector('.image a'))
 				except TimeoutException:
 					print ("Image", image, "is to o large")
@@ -472,21 +682,41 @@ class Pimper:
 				else:
 					if debug:
 						print (pic_addr)
+					#sleep(self.sleep_time)
 
+					#matches = driver.find_element_by_xpath('//*[@id="pages"]/div[2]/table/tbody/tr[1]/th')
 					matches = ui.WebDriverWait(self.driver, self.waiting_time).until(lambda driver: self.driver.find_element_by_xpath('//*[@id="pages"]/div[2]/table/tbody/tr[1]/th'))
 
 					if debug:
 						print ("matches:", matches)
 						print (matches.text)
+						#print (matches.text.find("No"))
 
 					if (matches.text.find("No")) != -1:
+						#f = open('text.txt', 'w')
+						#f.write(matches.text + "\n")
 						print (matches.text, "for", image)
 						self.move_image(None)
 					else:
 						self.search_for_source(pic_addr)
 
 					sleep(self.sleep_time)
-					
+					"""
+					if debug:
+						print ("main window:", s)
+						for handle in driver.window_handles:
+						    print ("Handle = ", handle)		
+
+					driver.close()
+
+					if debug:
+						for handle in driver.window_handles:
+						    print ("Handle = ", handle)
+
+					driver.switch_to_window(s)
+					"""
+					#driver.quit()
+					#server.stop()
 	def pimp(self):
 		if debug:
 			print ("proxy mode:", self.fast_proxy)
@@ -497,4 +727,5 @@ class Pimper:
 		finally:
 			self.driver.quit()
 			self.driver2.quit()
+			self.f.close()
 			print ("Job's done")
